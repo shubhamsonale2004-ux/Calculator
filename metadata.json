@@ -1,0 +1,7 @@
+{
+  "name": "Calculator",
+  "description": "A sleek and modern calculator for basic arithmetic operations with an interactive calculation history log.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
