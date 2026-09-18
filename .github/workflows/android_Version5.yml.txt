@@ -1,0 +1,59 @@
+name: Android CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  JAVA_VERSION: '17'
+  GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx2g
+
+jobs:
+  build:
+    name: Build downloadable debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: gradle
+
+      - name: Grant execute permission to Gradle wrapper
+        run: chmod +x ./gradlew
+
+      - name: Build debug APK
+        run: ./gradlew --no-daemon --stacktrace --console=plain :app:assembleDebug
+
+      - name: Verify APK was created
+        run: |
+          apk_count=$(find app/build/outputs/apk/debug -type f -name '*.apk' | wc -l)
+          if [ "$apk_count" -eq 0 ]; then
+            echo "No debug APK was produced."
+            exit 1
+          fi
+          ls -lh app/build/outputs/apk/debug/*.apk
+
+      - name: Upload downloadable debug APK
+        uses: actions/upload-artifact@v5
+        with:
+          name: Calculator-debug-apk-${{ github.run_number }}
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 30
