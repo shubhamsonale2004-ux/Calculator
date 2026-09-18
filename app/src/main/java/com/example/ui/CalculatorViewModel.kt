@@ -16,6 +16,7 @@ data class CalculatorUiState(
   val isResultCalculated: Boolean = false
 )
 
+/** Small MVVM state holder modelled after standard Compose calculator samples. */
 class CalculatorViewModel : ViewModel() {
   private val _uiState = MutableStateFlow(CalculatorUiState())
   val uiState: StateFlow<CalculatorUiState> = _uiState.asStateFlow()
@@ -65,7 +66,7 @@ class CalculatorViewModel : ViewModel() {
       val result = CalculatorEngine.formatResult(CalculatorEngine.evaluate(full))
       state.copy(expression = "$full =", currentInput = result, previewResult = null, isResultCalculated = true)
     } catch (error: ArithmeticException) {
-      state.copy(errorMessage = error.message ?: "Calculation error", previewResult = null)
+      state.copy(errorMessage = error.message ?: "Cannot divide by 0", previewResult = null)
     } catch (_: IllegalArgumentException) {
       state.copy(errorMessage = "Invalid calculation", previewResult = null)
     }
