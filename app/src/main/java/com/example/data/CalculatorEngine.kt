@@ -7,265 +7,109 @@ import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 import java.util.Locale
 
+/** Pure, dependency-free evaluator for basic calculator expressions. */
 object CalculatorEngine {
   private val mathContext = MathContext(16, RoundingMode.HALF_UP)
 
-  /**
-   * Evaluates a mathematical expression string containing numbers and operators:
-   * +, − (-), × (*), ÷ (/)
-   * Respects operator precedence: × and ÷ before + and −.
-   */
   fun evaluate(expression: String): BigDecimal {
-    // Normalize operator characters
-    val sanitized = expression
-      .replace("×", "*")
-      .replace("÷", "/")
-      .replace("−", "-")
-      .trim()
-
-    if (sanitized.isEmpty()) {
-      return BigDecimal.ZERO
-    }
-
-    val tokens = tokenize(sanitized)
-    if (tokens.isEmpty()) return BigDecimal.ZERO
-
-    return evaluateTokens(tokens)
+    val parser = Parser(expression)
+    val result = parser.parseExpression()
+    parser.skipWhitespace()
+    if (!parser.isAtEnd()) throw IllegalArgumentException("Invalid expression")
+    return result.stripTrailingZeros()
   }
 
-  private fun tokenize(input: String): List<String> {
-    val tokens = mutableListOf<String>()
-    var i = 0
-    while (i < input.length) {
-      val c = input[i]
-      when {
-        c.isWhitespace() -> {
-          i++
-        }
-        c in "+*/^√" -> {
-          tokens.add(c.toString())
-          i++
-        }
-        c == '-' -> {
-          // Check if '-' is a unary negative sign or binary subtraction
-          // It's unary if it's at the beginning or preceded by an operator
-          val prevToken = tokens.lastOrNull()
-          val isUnary = prevToken == null || prevToken in listOf("+", "-", "*", "/", "^")
-          if (isUnary) {
-            // Read the negative number
-            var j = i + 1
-            while (j < input.length && (input[j].isDigit() || input[j] == '.')) {
-              j++
-            }
-            if (j > i + 1) {
-              tokens.add(input.substring(i, j))
-              i = j
-            } else {
-              tokens.add(c.toString())
-              i++
-            }
-          } else {
-            tokens.add(c.toString())
-            i++
-          }
-        }
-        c.isDigit() || c == '.' -> {
-          var j = i
-          while (j < input.length && (input[j].isDigit() || input[j] == '.')) {
-            j++
-          }
-          tokens.add(input.substring(i, j))
-          i = j
-        }
-        else -> {
-          i++
-        }
-      }
-    }
-    return tokens
-  }
-
-  private fun evaluateTokens(tokens: List<String>): BigDecimal {
-    if (tokens.isEmpty()) return BigDecimal.ZERO
-
-    // Pass -1: Handle unary square root √ (e.g., √144 -> 12)
-    val tokensAfterSqrt = mutableListOf<String>()
-    var s = 0
-    while (s < tokens.size) {
-      val token = tokens[s]
-      if (token == "√") {
-        if (s + 1 >= tokens.size) {
-          throw IllegalArgumentException("Invalid syntax")
-        }
-        val operandStr = tokens[s + 1]
-        val operand = operandStr.toDouble()
-        if (operand < 0.0) {
-          throw ArithmeticException("Invalid input")
-        }
-        val root = Math.sqrt(operand)
-        val bdRoot = BigDecimal(root, mathContext).stripTrailingZeros()
-        tokensAfterSqrt.add(bdRoot.toPlainString())
-        s += 2
-      } else {
-        tokensAfterSqrt.add(token)
-        s++
-      }
-    }
-
-    // Pass 0: Handle exponentiation ^ (right-associative or left-to-right evaluation)
-    val tokensAfterExp = mutableListOf<String>()
-    var e = 0
-    while (e < tokensAfterSqrt.size) {
-      val token = tokensAfterSqrt[e]
-      if (token == "^") {
-        if (tokensAfterExp.isEmpty() || e + 1 >= tokensAfterSqrt.size) {
-          throw IllegalArgumentException("Invalid syntax")
-        }
-        val baseStr = tokensAfterExp.removeAt(tokensAfterExp.size - 1)
-        val expStr = tokensAfterSqrt[e + 1]
-        val base = baseStr.toDouble()
-        val exp = expStr.toDouble()
-        val result = Math.pow(base, exp)
-        if (result.isNaN() || result.isInfinite()) {
-          throw ArithmeticException("Result is undefined")
-        }
-        val bdResult = BigDecimal(result, mathContext).stripTrailingZeros()
-        tokensAfterExp.add(bdResult.toPlainString())
-        e += 2
-      } else {
-        tokensAfterExp.add(token)
-        e++
-      }
-    }
-
-    // First pass: Handle * and /
-    val intermediateTokens = mutableListOf<String>()
-    var i = 0
-    while (i < tokensAfterExp.size) {
-      val token = tokensAfterExp[i]
-      if (token == "*" || token == "/") {
-        if (intermediateTokens.isEmpty() || i + 1 >= tokensAfterExp.size) {
-          throw IllegalArgumentException("Invalid syntax")
-        }
-        val leftStr = intermediateTokens.removeAt(intermediateTokens.size - 1)
-        val rightStr = tokensAfterExp[i + 1]
-        val left = BigDecimal(leftStr)
-        val right = BigDecimal(rightStr)
-
-        val result = if (token == "*") {
-          left.multiply(right, mathContext)
-        } else {
-          if (right.compareTo(BigDecimal.ZERO) == 0) {
-            throw ArithmeticException("Cannot divide by 0")
-          }
-          left.divide(right, mathContext)
-        }
-        intermediateTokens.add(result.stripTrailingZeros().toPlainString())
-        i += 2
-      } else {
-        intermediateTokens.add(token)
-        i++
-      }
-    }
-
-    // Second pass: Handle + and -
-    if (intermediateTokens.isEmpty()) return BigDecimal.ZERO
-
-    var accumulator = BigDecimal(intermediateTokens[0])
-    var j = 1
-    while (j < intermediateTokens.size) {
-      val op = intermediateTokens[j]
-      if (j + 1 >= intermediateTokens.size) {
-        break // Trailing operator, ignore or accept current accumulator
-      }
-      val nextVal = BigDecimal(intermediateTokens[j + 1])
-      accumulator = when (op) {
-        "+" -> accumulator.add(nextVal, mathContext)
-        "-" -> accumulator.subtract(nextVal, mathContext)
-        else -> throw IllegalArgumentException("Unexpected operator: $op")
-      }
-      j += 2
-    }
-
-    return accumulator.stripTrailingZeros()
-  }
-
-  /**
-   * Formats a BigDecimal into a clean user-facing string.
-   * Eliminates unnecessary trailing zeroes and formats large numbers gracefully.
-   */
   fun formatResult(value: BigDecimal): String {
     val stripped = value.stripTrailingZeros()
+    val absolute = stripped.abs()
+    if (absolute >= BigDecimal("1000000000000") ||
+      (absolute > BigDecimal.ZERO && absolute < BigDecimal("0.000001"))) {
+      return DecimalFormat("0.######E0", DecimalFormatSymbols(Locale.US)).format(stripped)
+    }
     val plain = stripped.toPlainString()
-
-    // If extremely large or tiny scientific notation is needed
-    if (plain.length > 15 || stripped.scale() > 8) {
-      // Use scientific if scale is very large or abs value is huge
-      if (stripped.abs() >= BigDecimal("1000000000000") || (stripped.abs() > BigDecimal.ZERO && stripped.abs() < BigDecimal("0.000001"))) {
-        val scientificFormat = DecimalFormat("0.######E0", DecimalFormatSymbols(Locale.US))
-        return scientificFormat.format(value)
+    val parts = plain.split('.', limit = 2)
+    val integer = parts[0]
+    val negative = integer.startsWith('-')
+    val digits = if (negative) integer.drop(1) else integer
+    val grouped = buildString {
+      if (negative) append('-')
+      digits.forEachIndexed { index, character ->
+        if (index > 0 && (digits.length - index) % 3 == 0) append(',')
+        append(character)
       }
     }
-
-    // Regular formatting with thousands separator
-    val parts = plain.split(".")
-    val integerPart = parts[0]
-    val decimalPart = if (parts.size > 1) parts[1] else null
-
-    // Format integer part with commas
-    val isNegative = integerPart.startsWith("-")
-    val rawDigits = if (isNegative) integerPart.substring(1) else integerPart
-    val formattedInteger = buildString {
-      if (isNegative) append("-")
-      val len = rawDigits.length
-      for (idx in 0 until len) {
-        if (idx > 0 && (len - idx) % 3 == 0) {
-          append(",")
-        }
-        append(rawDigits[idx])
-      }
-    }
-
-    return if (decimalPart != null && decimalPart.isNotEmpty()) {
-      "$formattedInteger.$decimalPart"
-    } else {
-      formattedInteger
-    }
+    return if (parts.size == 2) "$grouped.${parts[1]}" else grouped
   }
 
-  /**
-   * Formats an input number string with commas while user is typing.
-   */
-  fun formatInputNumber(numberStr: String): String {
-    if (numberStr.isEmpty() || numberStr == "-" || numberStr == "Error" || numberStr.contains("Cannot")) {
-      return numberStr
+  fun formatInputNumber(input: String): String {
+    if (input.isEmpty() || input == "-" || input.endsWith('.')) return input
+    val parts = input.split('.', limit = 2)
+    val raw = parts[0]
+    val negative = raw.startsWith('-')
+    val digits = if (negative) raw.drop(1) else raw
+    if (digits.isEmpty()) return input
+    val grouped = buildString {
+      if (negative) append('-')
+      digits.forEachIndexed { index, character ->
+        if (index > 0 && (digits.length - index) % 3 == 0) append(',')
+        append(character)
+      }
     }
-    val parts = numberStr.split(".")
-    val integerPart = parts[0]
-    val decimalPart = if (parts.size > 1) parts[1] else null
-    val hasDot = numberStr.endsWith(".")
+    return if (parts.size == 2) "$grouped.${parts[1]}" else grouped
+  }
 
-    val isNegative = integerPart.startsWith("-")
-    val rawDigits = if (isNegative) integerPart.substring(1) else integerPart
-    if (rawDigits.isEmpty()) {
-      return numberStr
-    }
+  private class Parser(private val source: String) {
+    private var index = 0
+    fun isAtEnd() = index >= source.length
+    fun skipWhitespace() { while (!isAtEnd() && source[index].isWhitespace()) index++ }
 
-    val formattedInteger = buildString {
-      if (isNegative) append("-")
-      val len = rawDigits.length
-      for (idx in 0 until len) {
-        if (idx > 0 && (len - idx) % 3 == 0) {
-          append(",")
-        }
-        append(rawDigits[idx])
+    fun parseExpression(): BigDecimal {
+      var result = parseTerm()
+      while (true) {
+        skipWhitespace()
+        if (match('+')) result = result.add(parseTerm(), mathContext)
+        else if (match('-')) result = result.subtract(parseTerm(), mathContext)
+        else return result
       }
     }
 
-    return when {
-      decimalPart != null -> "$formattedInteger.$decimalPart"
-      hasDot -> "$formattedInteger."
-      else -> formattedInteger
+    private fun parseTerm(): BigDecimal {
+      var result = parseFactor()
+      while (true) {
+        skipWhitespace()
+        if (match('*') || match('×')) result = result.multiply(parseFactor(), mathContext)
+        else if (match('/') || match('÷')) {
+          val divisor = parseFactor()
+          if (divisor.compareTo(BigDecimal.ZERO) == 0) throw ArithmeticException("Cannot divide by 0")
+          result = result.divide(divisor, mathContext)
+        } else return result
+      }
+    }
+
+    private fun parseFactor(): BigDecimal {
+      skipWhitespace()
+      if (match('+')) return parseFactor()
+      if (match('-') || match('−')) return parseFactor().negate(mathContext)
+      if (match('(')) {
+        val value = parseExpression()
+        skipWhitespace()
+        if (!match(')')) throw IllegalArgumentException("Missing closing parenthesis")
+        return value
+      }
+      val start = index
+      var dots = 0
+      while (!isAtEnd() && (source[index].isDigit() || source[index] == '.')) {
+        if (source[index] == '.') dots++
+        if (dots > 1) throw IllegalArgumentException("Invalid number")
+        index++
+      }
+      if (start == index) throw IllegalArgumentException("Number expected")
+      return source.substring(start, index).toBigDecimal()
+    }
+
+    private fun match(character: Char): Boolean {
+      if (!isAtEnd() && source[index] == character) { index++; return true }
+      return false
     }
   }
 }
