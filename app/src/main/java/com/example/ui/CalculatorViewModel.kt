@@ -16,7 +16,6 @@ data class CalculatorUiState(
   val isResultCalculated: Boolean = false
 )
 
-/** Small MVVM state holder modelled after standard Compose calculator samples. */
 class CalculatorViewModel : ViewModel() {
   private val _uiState = MutableStateFlow(CalculatorUiState())
   val uiState: StateFlow<CalculatorUiState> = _uiState.asStateFlow()
@@ -39,22 +38,22 @@ class CalculatorViewModel : ViewModel() {
   }
 
   fun onDecimal() = update { state ->
-    if (state.errorMessage != null || state.isResultCalculated) CalculatorUiState(currentInput = "0.")
-    else if ('.' !in state.currentInput) state.copy(currentInput = state.currentInput + ".")
-    else state
+    if (state.errorMessage != null || state.isResultCalculated) {
+      CalculatorUiState(currentInput = "0.")
+    } else if ('.' !in state.currentInput) {
+      val next = state.currentInput + "."
+      state.copy(currentInput = next, previewResult = preview(state.expression, next))
+    } else state
   }
 
   fun onOperator(operator: String) = update { state ->
     if (state.errorMessage != null) return@update state
     val value = state.currentInput.replace(",", "")
-    val expression = if (state.isResultCalculated) {
-      "$value $operator "
-    } else if (state.expression.isEmpty()) {
-      "$value $operator "
-    } else if (state.currentInput == "0") {
-      state.expression.trimEnd().dropLastWhile { it in "+−×÷" }.trimEnd() + " $operator "
-    } else {
-      state.expression + "$value $operator "
+    val expression = when {
+      state.isResultCalculated || state.expression.isEmpty() -> "$value $operator "
+      state.currentInput == "0" -> state.expression.trimEnd()
+        .dropLastWhile { it in "+−×÷" }.trimEnd() + " $operator "
+      else -> state.expression + "$value $operator "
     }
     state.copy(expression = expression, currentInput = "0", previewResult = null, isResultCalculated = false)
   }
@@ -66,8 +65,8 @@ class CalculatorViewModel : ViewModel() {
       val result = CalculatorEngine.formatResult(CalculatorEngine.evaluate(full))
       state.copy(expression = "$full =", currentInput = result, previewResult = null, isResultCalculated = true)
     } catch (error: ArithmeticException) {
-      state.copy(errorMessage = error.message ?: "Cannot divide by 0", previewResult = null)
-    } catch (_: Exception) {
+      state.copy(errorMessage = error.message ?: "Calculation error", previewResult = null)
+    } catch (_: IllegalArgumentException) {
       state.copy(errorMessage = "Invalid calculation", previewResult = null)
     }
   }
@@ -79,18 +78,24 @@ class CalculatorViewModel : ViewModel() {
 
   fun onBackspace() = update { state ->
     if (state.isResultCalculated || state.errorMessage != null) CalculatorUiState()
-    else state.copy(currentInput = state.currentInput.dropLast(1).ifEmpty { "0" })
+    else {
+      val next = state.currentInput.dropLast(1).ifEmpty { "0" }
+      state.copy(currentInput = next, previewResult = preview(state.expression, next))
+    }
   }
 
   fun onToggleSign() = update { state ->
-    if (state.currentInput == "0") state else state.copy(
-      currentInput = if (state.currentInput.startsWith('-')) state.currentInput.drop(1) else "-${state.currentInput}"
-    )
+    if (state.currentInput == "0") state else {
+      val next = if (state.currentInput.startsWith('-')) state.currentInput.drop(1) else "-${state.currentInput}"
+      state.copy(currentInput = next, previewResult = preview(state.expression, next))
+    }
   }
 
   fun onPercentage() = update { state ->
     val value = state.currentInput.replace(",", "").toBigDecimalOrNull() ?: return@update state
-    state.copy(currentInput = value.divide(BigDecimal("100"), 10, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString())
+    val next = value.divide(BigDecimal("100"), 16, RoundingMode.HALF_UP)
+      .stripTrailingZeros().toPlainString()
+    state.copy(currentInput = next, previewResult = preview(state.expression, next))
   }
 
   private fun preview(expression: String, input: String): String? {
