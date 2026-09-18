@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -67,8 +66,9 @@ private fun Display(state: CalculatorUiState, modifier: Modifier, landscape: Boo
       Text(state.expression, color = MaterialTheme.colorScheme.onSurfaceVariant,
         fontFamily = FontFamily.Monospace, textAlign = TextAlign.End)
       Text(shown, fontSize = if (landscape) 36.sp else 52.sp,
-        fontWeight = FontWeight.Bold, color = if (state.errorMessage == null)
-          MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error,
+        fontWeight = FontWeight.Bold,
+        color = if (state.errorMessage == null) MaterialTheme.colorScheme.onSurface
+        else MaterialTheme.colorScheme.error,
         fontFamily = FontFamily.Monospace, maxLines = 1, textAlign = TextAlign.End,
         modifier = Modifier.testTag("display_result"))
     }
@@ -90,12 +90,14 @@ private fun SimpleKeypad(viewModel: CalculatorViewModel, landscape: Boolean) {
       Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(spacing)) {
         row.forEach { key ->
           val type = when (key) {
-            "÷", "×", "−", "+", "=" -> if (key == "=") ButtonType.EQUALS else ButtonType.OPERATOR
+            "÷", "×", "−", "+" -> ButtonType.OPERATOR
+            "=" -> ButtonType.EQUALS
             "AC", "±", "%", "⌫" -> ButtonType.ACTION
             else -> ButtonType.NUMBER
           }
           CalculatorButton(
-            text = key, type = type, isLandscape = landscape,
+            text = key,
+            type = type,
             onClick = {
               when (key) {
                 "AC" -> viewModel.onClear()
@@ -107,7 +109,9 @@ private fun SimpleKeypad(viewModel: CalculatorViewModel, landscape: Boolean) {
                 "÷", "×", "−", "+" -> viewModel.onOperator(key)
                 else -> viewModel.onDigit(key)
               }
-            }, modifier = Modifier.weight(1f)
+            },
+            modifier = Modifier.weight(1f),
+            isLandscape = landscape
           )
         }
       }

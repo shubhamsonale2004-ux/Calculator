@@ -5,8 +5,9 @@ import com.example.data.CalculatorEngine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.math.BigDecimal
+import java.math.RoundingMode
 
-/** Small, in-memory calculator state. No microphone, network, database, or runtime permissions. */
 data class CalculatorUiState(
   val expression: String = "",
   val currentInput: String = "0",
@@ -26,27 +27,27 @@ class CalculatorViewModel : ViewModel() {
       input.length >= 15 -> input
       else -> input + digit
     }
-    state.copy(expression = if (state.isResultCalculated) "" else state.expression,
-      currentInput = next, errorMessage = null, isResultCalculated = false)
+    state.copy(
+      expression = if (state.isResultCalculated) "" else state.expression,
+      currentInput = next,
+      errorMessage = null,
+      isResultCalculated = false
+    )
   }
 
   fun onDecimal() = update { state ->
-    if (state.errorMessage != null || state.isResultCalculated) {
-      CalculatorUiState(currentInput = "0.")
-    } else if (!state.currentInput.contains('.')) {
-      state.copy(currentInput = state.currentInput + ".")
-    } else state
+    if (state.errorMessage != null || state.isResultCalculated) CalculatorUiState(currentInput = "0.")
+    else if (!state.currentInput.contains('.')) state.copy(currentInput = state.currentInput + ".")
+    else state
   }
 
   fun onOperator(operator: String) = update { state ->
     if (state.errorMessage != null) return@update state
     val value = state.currentInput.replace(",", "")
-    if (state.isResultCalculated) {
-      state.copy(expression = "$value $operator ", currentInput = "0", isResultCalculated = false)
-    } else if (state.expression.isEmpty()) {
-      state.copy(expression = "$value $operator ", currentInput = "0")
-    } else {
-      state.copy(expression = state.expression + "$value $operator ", currentInput = "0")
+    when {
+      state.isResultCalculated -> state.copy(expression = "$value $operator ", currentInput = "0", isResultCalculated = false)
+      state.expression.isEmpty() -> state.copy(expression = "$value $operator ", currentInput = "0")
+      else -> state.copy(expression = state.expression + "$value $operator ", currentInput = "0")
     }
   }
 
@@ -83,8 +84,10 @@ class CalculatorViewModel : ViewModel() {
   }
 
   fun onPercentage() = update { state ->
-    state.copy(currentInput = state.currentInput.toBigDecimalOrNull()
-      ?.divide(java.math.BigDecimal("100"))?.stripTrailingZeros()?.toPlainString() ?: state.currentInput)
+    val value = state.currentInput.replace(",", "").toBigDecimalOrNull()
+      ?: return@update state
+    state.copy(currentInput = value.divide(BigDecimal("100"), 10, RoundingMode.HALF_UP)
+      .stripTrailingZeros().toPlainString())
   }
 
   private fun update(transform: (CalculatorUiState) -> CalculatorUiState) {
