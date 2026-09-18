@@ -57,7 +57,6 @@ dependencies {
   implementation(libs.androidx.lifecycle.runtime.compose)
   implementation(libs.androidx.lifecycle.viewmodel.compose)
 
-  // Retained for the existing history data classes and generated Room sources.
   implementation(libs.androidx.room.ktx)
   implementation(libs.androidx.room.runtime)
   "ksp"(libs.androidx.room.compiler)
@@ -68,6 +67,7 @@ dependencies {
   testImplementation(libs.junit)
   testImplementation(libs.robolectric)
   testImplementation(libs.roborazzi)
+  testImplementation(libs.robolectric)
   testImplementation(libs.roborazzi.compose)
   testImplementation(libs.roborazzi.junit.rule)
   androidTestImplementation(platform(libs.androidx.compose.bom))
